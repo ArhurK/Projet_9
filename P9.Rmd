@@ -1,0 +1,864 @@
+---
+title: "Projet 9 Prédisez la demande en électricité"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+# Scénario 
+
+Mise en situation
+Vous êtes employé chez Enercoop, société coopérative qui s'est développée grâce à la libéralisation du marché de l’électricité en France. Elle est spécialisée dans les énergies renouvelables.
+
+La plupart de ces énergies renouvelables est cependant intermittente, il est donc difficile de prévoir les capacités de production d'électricité. De plus, la demande en électricité des utilisateurs varie au cours du temps, et dépend de paramètres comme la météo (température, luminosité, etc.) Tout le challenge est de mettre en adéquation l'offre et la demande !
+
+
+Votre mission
+Vous vous concentrerez uniquement sur la prédiction de la demande en électricité.
+
+1. Corrigez les données de consommation mensuelles de l'effet température (dues au chauffage électrique) en utilisant une régression linéaire.
+2. Effectuez une désaisonnalisation de la consommation que vous aurez obtenue après correction, grâce aux moyennes mobiles.
+3. Effectuez une prévision de la consommation (corrigée de l'effet température) sur un an, en utilisant la méthode de Holt Winters (lissage exponentiel) puis la méthode SARIMA sur la série temporelle.
+
+Pour chaque traitement effectué (correction de l'effet température, désaisonnalisation, etc.), vous présenterez les 2 séries temporelles avant et après traitement, sur un graphique où les deux séries temporelles seront superposées.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(readxl)
+library(visdat)
+library(tidyverse)
+library(lubridate)
+library(forecast)
+library(lindia)
+```
+
+## Importation  et Nettoyage 
+
+
+```{r , include=FALSE}
+# 8 Régions représentatives de la météo en France métropolitaine 
+
+m1 <- read_excel("m1.xlsx") 
+m2 <- read_excel("m2.xlsx")
+m3 <- read_excel("m3.xlsx")
+m4 <- read_excel("m4.xlsx")
+m5 <- read_excel("m5.xlsx")
+m6 <- read_excel("m6.xlsx")
+m7 <- read_excel("m7.xlsx")
+m8 <-  read_excel("calcul_DJU_14_11_2021.xlsx")
+
+
+
+
+m1 <- m1[12:21,1:13]
+colnames(m1) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m1[2:13] <- lapply(m1[2:13],function(x) as.numeric(as.character(x)))
+m1 <- pivot_longer(m1,-year)
+m1 <- m1 %>% unite(mois,year,name,sep = "-")
+
+m2 <- m2[12:21,1:13]
+colnames(m2) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m2[2:13] <- lapply(m2[2:13],function(x) as.numeric(as.character(x)))
+m2 <- pivot_longer(m2,-year)
+m2 <- m2 %>% unite(mois,year,name,sep = "-")
+
+m3 <- m3[12:21,1:13]
+colnames(m3) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m3[2:13] <- lapply(m3[2:13],function(x) as.numeric(as.character(x)))
+m3 <- pivot_longer(m3,-year)
+m3 <- m3 %>% unite(mois,year,name,sep = "-")
+
+m4 <- m4[12:21,1:13]
+colnames(m4) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m4[2:13] <- lapply(m4[2:13],function(x) as.numeric(as.character(x)))
+m4 <- pivot_longer(m4,-year)
+m4 <- m4 %>% unite(mois,year,name,sep = "-")
+
+
+m5 <- m5[12:21,1:13]
+colnames(m5) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m5[2:13] <- lapply(m5[2:13],function(x) as.numeric(as.character(x)))
+m5 <- pivot_longer(m5,-year)
+m5 <- m5 %>% unite(mois,year,name,sep = "-")
+
+m6 <- m6[12:21,1:13]
+colnames(m6) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m6[2:13] <- lapply(m6[2:13],function(x) as.numeric(as.character(x)))
+m6 <- pivot_longer(m6,-year)
+m6 <- m6 %>% unite(mois,year,name,sep = "-")
+
+m7 <- m7[12:21,1:13]
+colnames(m7) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m7[2:13] <- lapply(m7[2:13],function(x) as.numeric(as.character(x)))
+m7 <- pivot_longer(m7,-year)
+m7 <- m7 %>% unite(mois,year,name,sep = "-")
+
+m8 <- m8[12:21,1:13]
+colnames(m8) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12")
+m8[2:13] <- lapply(m8[2:13],function(x) as.numeric(as.character(x)))
+m8 <- pivot_longer(m8,-year)
+m8 <- m8 %>% unite(mois,year,name,sep = "-")
+```
+
+- On joint les fichiers et on agrège par la moyenne par date.
+
+- On supprimer les valeurs égales à zéro qui sont des valeurs manquantes NA.
+
+- On applique le format Date à la colonne "mois".
+
+
+```{r}
+M1 <-left_join(m1,m2,by="mois") %>% left_join(m3, by="mois") %>% 
+  left_join(m4,by="mois") %>% left_join(m5,by="mois") %>%
+  left_join(m6,by="mois") %>% left_join(m7,by="mois") %>% left_join(m8,by="mois") %>%
+  mutate(value = (value.x+value.y+value.x.x+value.y.y+value.x.x.x+value.y.y.y+value.x.x.x.x+value.y.y.y.y)/8 ) %>%
+  select(mois,value) %>% filter(value !="0") %>%
+  mutate(mois=ym(mois))
+
+```
+
+
+
+
+
+Donnée Consommation électrique 
+```{r}
+df <- eCO2mix_RTE_energie_M[,1:15] # on exclut les données NA == commerce internationale 
+
+df <- df[,c(1,2,3,14)] %>% filter(Territoire=="France") # On sélectionne la France
+
+df <- mutate(df, mois= ym(Mois) ) # Format date pour la colonne mois
+
+df2 <- merge(M1,df) %>% select(mois,value,Consommation.totale) # On merge nos 2 df, on sélectionne les colonnes pertinantes.
+
+head(df2) # Résultat : mois=date , value= effet météo chauffage , consommation totale d'électricité
+
+```
+On a un data frame :
+
+- mois = date par mois 
+
+- value = Donnée météo : chauffage 
+
+- Consommation.totale : Consommation électrique totale en France , toutes sources de production confondues
+
+
+## Partie 1 : Correction de l'effet température 
+
+#### Énoncé : *Corrigez les données de consommation mensuelles de l'effet température (dues au chauffage électrique) en utilisant une régression linéaire.*
+
+
+
+##### Visualisation 
+
+```{r}
+# library(gridExtra)
+
+# Visualisation 
+p1 <- ggplot(M1) +
+  aes(x=mois,y=value) +
+  geom_line(color="peru") +
+  ggtitle("Météo : Besoin en Chauffage Électrique") +
+  xlab("") +
+  ylab("écart de température ")
+
+
+# Consommation Electrique en France 2012-2022
+p2 <- ggplot(df) +
+  aes(x=mois,y=Consommation.totale) +
+  geom_line(color="steelblue3") +
+  ggtitle("Consommation Électrique en France") +
+  ylab("Consommation totale (GWh)") +
+  xlab('') 
+
+gridExtra::grid.arrange(p1,p2)  
+```
+
+##### Régression linéaire 
+
+On visualise 
+```{r message=FALSE}
+ggplot(df2) +
+  aes(x=Consommation.totale,y=value) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ylab("Météo : chauffage") +
+  xlab("Consommation totale (GWh)") +
+  ggtitle("Régression Linéaire : Consommation d'électricité ~ Besoin en chauffage électrique ")
+```
+Modèle de Régression linéaire
+
+On se doit de transformer la variable Concommation totale pour ne pas avoir des valeurs négatives.
+
+On peut choisir une transformation Logarithmique ou BoxCox.
+
+Nous allons chercher dans un premier temps la meilleure transformation.
+
+
+#### Version logarithmique
+```{r}
+# Regression linéaire Log 
+
+mod1 <- lm(log(Consommation.totale) ~ value , data = df2)
+summary(mod1)
+mod1$coefficients
+
+# Évaluation des Résidus 
+
+par(mfrow=c(2,2))
+plot(mod1)
+
+# gg_diagnose(mod1)
+```
+Test de Breusch-Pagan (version log)
+```{r}
+lmtest::bptest(mod1)
+```
+
+La p-value est supérieure à 5%, nous ne pouvons pas rejeter l'hypothèse H0 selon laquelle les variances sont constantes (l'hypothèse d'homoscédasticité).
+
+
+
+#### Méthode Box Cox
+
+```{r message=FALSE}
+# Box Cox 
+library(MASS)
+bc <- boxcox(df2$Consommation.totale ~ df2$value) # modèle linéaire 
+(lambda <- bc$x[which.max(bc$y)]) # Lambda optimal : -0.1818182 : proche de zéro 
+
+#fit new linear regression model using the Box-Cox transformation
+BC_model <- lm(((df2$Consommation.totale^lambda-1)/lambda) ~ df2$value)
+
+library(Ecfun)
+b <- ((df2$Consommation.totale^lambda-1)/lambda) - df2$value * BC_model[["coefficients"]][["df2$value"]]
+b <- invBoxCox(b,lambda = lambda)
+```
+
+
+```{r}
+summary(BC_model)
+```
+
+```{r}
+lmtest::bptest(BC_model)
+```
+
+
+studentized Breusch-Pagan test
+
+La p-value est inférieure à 5%, nous pouvons rejeter l'hypothèse H0 selon laquelle les variances sont constantes (l'hypothèse d'homoscédasticité).
+
+On retient par conséquent l'hypothèse d'hétéroscédasticité des résidus de notre modèle BoxCox.
+
+
+On retiendra la version BoxCox qui minimise les résidus pour notre transformation linéaire.
+
+```{r}
+a <- log(df2$Consommation.totale) - df2$value * mod1[["coefficients"]][["value"]]
+# exp(a) = log          b = boxcox 
+
+
+df2 <- mutate(df2, Consommation_corrigée = b) # On choisit la version BoxCox 
+```
+
+La différence entre les deux transformations est maigre.
+
+```{r}
+mutate(df2, Consommation_corrigée_bc = b) %>% 
+  ggplot() +
+  geom_line(aes(y=Consommation_corrigée,x=mois,color="Log"),size=0.8,linetype="twodash") +
+  geom_line(aes(y=Consommation_corrigée_bc,x=mois,color="BoxCox"),size=0.8) +
+  scale_color_manual(values =c('Log' = 'blue','BoxCox' = 'deeppink')) +
+  labs(x="",y="Consommation Corrigée",title = "Transformation Logarithmique contre BoxCox",color="Consommation Corrigée")+
+  theme(legend.position = "top")
+```
+
+
+
+
+### Visualisation Partie 1 : Consommation corrigée par régression linéaire.
+
+```{r}
+ggplot(df2)+
+  geom_line(mapping=aes(y=Consommation.totale,x = mois,color="Consommation Totale"),size=1,linetype="twodash") +
+  geom_line(mapping=aes(y=Consommation_corrigée,x= mois,color="Consommation Corrigée (hors chauffage électrique)"),size=1) +
+  scale_color_manual(values = c(
+    'Consommation Totale' = 'peru',
+    'Consommation Corrigée (hors chauffage électrique)' = 'steelblue')) +
+  labs(color = '',y="Consommation totale (GWh)",x="",title = c("Consommation Électrique en France")) +
+  theme(legend.position = "top")
+
+```
+## Partie 2 : Saisonnalité et Moyenne Mobile 
+
+#### *Effectuez une désaisonnalisation de la consommation que vous aurez obtenue après correction, grâce aux moyennes mobiles.*
+
+Création d'un Vecteur de type serie temporelle 
+```{r}
+ts <- ts(df2$Consommation_corrigée, start=c(2012, 1), end=c(2021, 6), frequency=12)
+autoplot(ts) +
+  ggtitle("Création d'un objet R : serie temporelle")
+```
+### Décomposition saisonnale 
+```{r}
+# Seasonal decomposition / décomposition saisonnale
+#fit <- stl(ts, s.window="period")
+#plot(fit)
+#monthplot(ts)
+#forecast::seasonplot(ts)
+fit <- autoplot(stl(ts, s.window="period"))
+fit 
+```
+
+
+```{r}
+# season plot 
+
+ggseasonplot(window(ts))+ggtitle("Season plot")+labs(x="",y="")
+```
+
+```{r}
+# season plot 
+
+plotly::ggplotly(ggseasonplot(window(ts))+ggtitle("Seasonal plot : Consommation corrigée"))
+```
+Sur ce graphique interactif on remarque facilement que les années suivent la même tendance de 2012 à 2019
+
+*il suffit de cliqué sur une année pour l'exclure et inversement*
+
+
+L'année 2020 connait une baisse tendantielle ( dû probablement à la baisse d'activité lié à la pandémie)
+
+2021 connait une tendance à la hausse qu'il faut relativiser : Effet de rattrapage de l'activité mais également un effet saisonnier.
+
+Nous avons que les 6 premiers mois de l'année 2021, or juin / juillet est un pic de consommation comme nous le montre le "month plot ".
+
+
+```{r}
+ggsubseriesplot(window(ts),polar=T)+labs(x="",y="Consommation corrigée") + ggtitle("Month plot")
+```
+```{r}
+ggseasonplot(window(ts),polar = T) + ggtitle("Season plot Polar")
+```
+On peut voir sur ce graphique Mai et Juin  2021 sont des valeurs extrêmes. 
+
+
+
+#### Moyennes Mobiles 
+
+```{r}
+MA_ts <- forecast::ma(ts, order=12, centre = TRUE)
+#plot(ts, main="Consommation Électrique en France",sub="Consommation hors chauffage électrique",xlab=NULL,ylab="Consommation totale (GWh)")
+#lines(MA_ts,col="blue",lwd=3)
+```
+
+```{r}
+decomp_ts <- decompose(ts)
+decomp_ts_adj <- ts - decomp_ts$seasonal # Time serie : consommation corrigée des effets saisonniers
+```
+
+
+
+```{r}
+autoplot(ts, series="Consommation Corrigée",size=0.8,linetype="twodash") +
+  autolayer(MA_ts, series="Tendance : Moyenne Mobile",size=1.1,na.rm = T) +
+  #autolayer(decomp_ts_adj, series="Effet Saisonnier Corrigée",size=0.8,linetype="solid") +
+  ggtitle("Consommation Électrique en France",subtitle = "Hors chauffage électrique") +
+  labs(x="",y="Consommation Corrigée (GWh)") +
+  theme(legend.position="bottom",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','red','olivedrab'))
+
+```
+Conclusion Partie 2 :
+
+- Tendance assez stable de 2012 à 2019
+
+- Baisse en en 2020 ( baisse de l'activité lié au effet Covid ? )
+
+- Hausse sur les 6 premiers mois de 2021 : Effet de rattrapage de l'économie ? Pic de demande en Juin / Juillet augmente notre moyenne car nous n'avons pas la baisse de fin d'année. ( Voir graphique "month plot") 
+
+
+
+## Partie 3 : Prévision 
+
+#### *Effectuez une prévision de la consommation (corrigée de l'effet température) sur un an, en utilisant la méthode de Holt Winters (lissage exponentiel) puis la méthode SARIMA sur la série temporelle.*
+
+#### Partitionnement de la série temporelle
+
+Train : Donnée d'apprentissage 
+Test : Donnée sur lesquelles on teste notre modèle 
+
+```{r}
+ts_train <- window(ts, start = 2012, end = 2018.6666667) # ~ 71 % des données 
+ts_test <- window(ts, start = 2018.75) # ~ 29 % des données 
+```
+
+```{r}
+autoplot(ts_train, series=" Data train ~ 70 %",size=0.8) +
+  autolayer(ts_test, series="Data test ~ 30 %",size=0.8) +
+  ggtitle("Partionnement des données") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','green'))
+```
+
+Effet stationnaire des series Train et Test  Dickey-Fuller Test
+
+```{r warning=FALSE}
+# test
+tseries::adf.test(ts) # Non Stationnaire
+tseries::adf.test(ts_train) # S
+tseries::adf.test(ts_test) # NS 
+```
+
+- Data : Non Stationnaire 
+
+- Data Train :  Stationnaire 
+
+- Data Test  :  Non Stationnaire 
+
+
+
+
+#### I. la méthode de Holt Winters (lissage exponentiel)
+
+
+Recherche d'un modèle optimal
+```{r}
+ts_ets <- ts_train %>% ets() # Modèle de type ETS(A,N,A)
+ts_fc <- ts_ets %>% forecast(h=33)
+
+ts_ets
+```
+
+
+```{r}
+autoplot(ts_train, series=" Data Train",size=0.8) +
+  autolayer(ts_test, series="Data Test",size=0.8) +
+  autolayer(ts_fc,serie="HW : Prévision sur Data Test") +
+  ggtitle("Modèle HOLT WINTERS : Évaluation du modèle sur Data Test") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','green','#E69F00'))
+
+```
+Prévision dans l'ensemble fiable. 
+
+Les extremums saisonniers du Data Test échappent à la prévision du modèle HW.
+
+Vérifions
+
+```{r}
+accuracy(ts_fc,ts)
+```
+ME : Mean Error 
+
+MAPE  : Mean absolute percentage error :  Train  1.4 %  >>>  Test 3.9 %
+
+RMSE : Root Mean Squared Error :  La différence Train et Test s'explique en grande partie 
+par les valeurs extrêmes non prédites 
+
+
+
+
+```{r}
+t1 <-autoplot(ts_test, series=" Data Test",size=0.8) +
+  autolayer(ts_fc,serie="HW : Prévision sur Data Test") +
+  ggtitle("HOLT WINTERS : Évaluation du modèle sur Data Test") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('green','#E69F00'))
+
+t1
+
+```
+
+
+
+
+
+
+
+#### Prévision avec la méthode de Holt Winters 
+
+Notre modèle pour prévoir les 12 prochains mois : 
+
+ETS(A,N,A) 
+
+Call:
+ ets(y = .) 
+
+  Smoothing parameters:
+    alpha = 1e-04 
+    gamma = 1e-04 
+
+
+```{r}
+
+hw=ets(ts,model="ANA",alpha = 1e-04 ,gamma = 1e-04  ) # On reprend les paramètres  alpha et gamma de notre modèle 
+hw.pred=predict(hw,12) # Prévision sur les 12 prochain mois 
+#plot(hw.pred)
+
+
+autoplot(ts, series=" Consommation corrigée",size=0.8) +
+  autolayer(hw.pred, series=" Prévision HW ~ 12 mois",size=0.8) +
+  ggtitle("Modèle HOLT WINTERS : Prévision de la consommation électrique en France") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','#E69F00'))
+```
+
+Évaluer le modèle 
+```{r}
+mean(hw$residuals)
+
+hw$amse
+
+accuracy(hw)
+```
+
+```{r}
+checkresiduals(hw)
+shapiro.test(residuals(hw))
+```
+On peut rejeter les hypothèses suivantes :
+
+- La serie est un bruit blanc                   Ljung-Box test      p-value < 0.05
+- les résidus suivent une loi Normale           Shapiro-Wilk test   p-value  < 0.05
+
+
+
+
+
+
+
+
+
+
+
+#### II. Modèle SARIMA 
+
+
+
+
+
+
+Recherche d'un modèle avec la fonction auto.arima du package forecast
+
+On test auto aurima sur l'ensemble du jeu de donnée 
+
+```{r}
+# auto.arima(ts, seasonal = T,trace = T,test = "kpss", ic="bic")
+```
+
+```{r}
+d.arima <- auto.arima(ts)
+d.forecast <- forecast(d.arima, level = c(95), h = 12)
+# autoplot(d.forecast,serie="conso")
+```
+
+```{r}
+autoplot(ts, series=" Consommation corrigée",size=0.8) +
+  autolayer(d.forecast, series=" Prévision ARIMA",size=0.8) +
+  ggtitle(" Prévision de consommation électrique modèle ARIMA") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','magenta'))
+```
+#### Modélisation Train and Test 
+
+```{r}
+train.arima <- auto.arima(ts_train)
+train.forecast <- forecast(train.arima, level = c(95), h = 33)
+```
+
+```{r}
+autoplot(train.forecast,serie="conso")
+```
+Évaluation sur Data Test 
+
+```{r}
+t2 <- autoplot(ts_test, series=" Consommation corrigée",size=0.8) +
+  autolayer(train.forecast, series=" Prévision ARIMA") +
+  ggtitle(" ARIMA : Évaluation du modèle sur Data Test") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','magenta'))
+
+t2
+
+```
+```{r}
+accuracy(ts_fc,ts) # HW 
+accuracy(train.forecast,ts) # SARIMA 
+```
+
+MAPE/RMSE Sarima : légèrement plus performant sur le test set  que le modèle Holt Winter
+
+
+
+##### Prévision avec ce modèle sur 12 mois 
+```{r}
+new.arima <- Arima(y=ts,model = train.arima)
+new.f.arima <- new.arima %>% forecast(level=c(90),h=12) 
+```
+
+```{r}
+ autoplot(ts, series=" Consommation corrigée",size=0.8) +
+  autolayer(new.f.arima, series="Prévision SARIMA ~ 12 mois ",size=0.1) +
+  #autolayer(d.forecast,series = "y",size=0.1)+
+  #autolayer(hw.pred, series=" Prévision HW ~ 12 mois",size=0.8)+
+  ggtitle("SARIMA  : Prévision de la consommation électrique en France") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','magenta','red'))
+```
+
+##### Évaluation du modèle SARIMA
+
+```{r}
+accuracy(new.f.arima)
+```
+On test le modèle 
+```{r}
+# Test SARIMA 
+checkresiduals(new.f.arima)
+shapiro.test(residuals(new.f.arima))
+```
+
+On peut rejeter les hypothèses : 
+- de bruit blanc de la série :           Ljung-Box test :p value < 0.05
+- et de normalité des résidus :          Shapiro-Wilk normality test : p value < 0.05
+
+
+
+
+
+### Comparaison des deux modèles 
+
+
+#### Partie Test
+```{r}
+gridExtra::grid.arrange(t1,t2)
+```
+#### Prévision 
+
+```{r}
+# Comparaison des prédictions HW et SARIMA
+
+k1 <- autoplot(ts_test, series=" Consommation corrigée",size=0.8) +
+  autolayer(new.f.arima, series="Prévision SARIMA ~ 12 mois ",size=0.1) +
+  #autolayer(d.forecast,series = "y",size=0.1)+
+  #autolayer(hw.pred, series=" Prévision HW ~ 12 mois",size=0.8)+
+  ggtitle("SARIMA  : Prévision de la consommation électrique en France") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','magenta','red'))
+
+
+k2 <- autoplot(ts_test, series=" Consommation corrigée",size=0.8) +
+  autolayer(hw.pred, series=" Prévision HW ~ 12 mois",size=0.8) +
+  ggtitle("HOLT WINTERS : Prévision de la consommation électrique en France") +
+  theme(plot.title = element_text(size=10)) +
+  labs(x="",y="Consommation corrigée (GWh)") +
+  theme(legend.position="top",plot.title = element_text(size=10)) +
+  scale_color_manual(values=c('steelblue','#E69F00'))
+
+
+cowplot::plot_grid(k2,k1,nrow = 2)
+```
+### Accuracy
+```{r}
+accuracy(hw)
+accuracy(new.f.arima)
+```
+
+Conclusion Partie 3 : 
+- Deux modèles assez similaires.
+- Holt Winter a cependant de meilleurs performances : les données sont plus adaptées au lissage exponentiel.
+- Les erreurs moyennes sont notamment plus faibles dans ce modèle.
+
+
+
+
+
+
+# Bonus : pour aller plus loin 
+
+1. librarie Prophet pour un nouveau modèle prédictif.
+2. Fable pour la comparaison des modèles.
+3. Highcharter pour la data Viz.
+
+Nous allons également tester la librairie Prophet de Facebook.
+
+
+```{r message=FALSE}
+library(prophet)
+```
+
+```{r message=FALSE}
+# Prophet 
+m <- df2 %>% select(mois,Consommation_corrigée) %>% rename(ds=mois,y=Consommation_corrigée) %>% prophet()
+```
+
+```{r}
+# Forecasting 
+future <- make_future_dataframe(m,periods = 12,freq = 'month')
+prophet_forecast <- predict(m,future)
+plot(m,prophet_forecast)
+```
+
+```{r}
+dyplot.prophet(m,prophet_forecast)
+```
+
+
+```{r}
+prophet_plot_components(m, prophet_forecast)
+```
+
+Le modèle Prophet est très similaire à nos modèles précédents.
+
+
+
+
+## FABLE 
+
+### Librairie 
+```{r}
+# Fable.prophet
+library(fable)
+library(fable.prophet)
+library(tsibble) # Manipulation, transformation 
+library(feasts)
+```
+
+
+
+```{r}
+df3 <- df2 %>%
+  mutate(mois = yearmonth(mois)) %>%
+  as_tsibble(index = mois) 
+
+
+df3 %>% select(mois,Consommation_corrigée) %>% gg_season()
+
+
+df3 %>% gg_subseries(Consommation_corrigée)
+
+df3 %>% ACF(Consommation_corrigée) %>% autoplot()
+
+```
+```{r}
+# Trend 
+
+dcmp <- df3%>%
+  model(stl = STL(Consommation_corrigée))
+components(dcmp)
+
+
+components(dcmp) %>%
+  as_tsibble() %>%
+  autoplot(Consommation_corrigée, colour="gray") +
+  geom_line(aes(y=trend), colour = "#D55E00") +
+  labs(
+    title = "Trend fable "
+  )
+```
+```{r}
+# decompose 
+
+components(dcmp) %>% autoplot()
+```
+```{r}
+# season adjusted 
+
+
+components(dcmp) %>%
+  as_tsibble() %>%
+  autoplot(Consommation_corrigée, colour = "gray") +
+  geom_line(aes(y=season_adjust), colour = "#0072B2") +
+  labs(y = "Conso corrigée",
+       title = "Season adjust")
+```
+
+### Comparaison des trois modèles avec Fable.
+
+```{r}
+# forecasting
+
+
+train.fable <- df3[1:80,]
+
+fit.fable <- train.fable %>%
+  model(
+    arima = ARIMA(Consommation_corrigée),
+    ets = ETS(Consommation_corrigée),
+    prophet = prophet(Consommation_corrigée ~ season(period = 4, order = 2,
+                                      type = "multiplicative"))
+  )
+
+fc.fable <- fit.fable %>% forecast(h = "2 years 9 months") # OK 
+
+
+fc.fable %>% autoplot(df3)
+
+fc.fable %>% accuracy(df3) # Arima, HW , puis Prophet .
+```
+
+
+## DATA VIZ amélioration 
+
+### Librarie highcharter
+```{r}
+library(highcharter)
+
+airforecast <- forecast(auto.arima(AirPassengers), level = 95)
+
+hchart(airforecast)
+
+
+```
+
+```{r}
+ts2 <- ts(df2$Consommation.totale, start=c(2012, 1), end=c(2021, 6), frequency=12)
+
+v <- cbind(ts2,ts)
+#v <- rename(v,Consommation_totale=ts2,Consommation_corrigée=ts)
+
+
+hc <- hchart(v) 
+
+
+# hc <- hc %>%
+#   hcaes(
+#     name=c("conso","conso_corr"))
+
+
+
+hc
+```
+```{r}
+hchart(stl(ts, s.window="period"))
+```
+
+
+
+```{r}
+hchart(ts_fc)
+hchart(hw.pred)
+```
+
+
+

@@ -1,0 +1,68 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Projet 9 Prédisez la demande en électricité
+
+librairie
+```{r warning=FALSE}
+library(readxl)
+library(visdat)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(forecast)
+```
+
+Importation 
+
+Donnée Météo 
+```{r warning=FALSE}
+library(readxl)
+calcul_DJU_14_11_2021 <- read_excel("calcul_DJU_14_11_2021.xlsx")
+
+meteo <- calcul_DJU_14_11_2021[11:24,]
+colnames(meteo) <- meteo[1,]
+meteo <- meteo[2:14,]
+colnames(meteo)[1] <- "year"
+colnames(meteo) <- c("year","01","02","03","04","05","06","07","08","09","10","11","12","total")
+
+# On veut des variables numériques 
+# df[cols] <- lapply(df[cols], function(x) as.numeric(as.character(x)))
+
+meteo[2:14] <- lapply(meteo[2:14],function(x) as.numeric(as.character(x)))
+
+# On supprime 2009,2010,2011 Notre df commence en 2012
+meteo <- meteo[1:10,]
+
+# Pivot_longer
+
+M1 <- select(meteo,-total)
+
+M1 <- pivot_longer(M1,-year)
+
+# df %<>%
+# unite(ColAandB, colA, colB, remove = FALSE)
+
+M1 <- M1 %>% unite(mois,year,name,sep = "-")
+M1 <- mutate(M1, mois=ym(mois)) # Format date 
+M1 <- filter(M1, value !="0") # on suprrime les valeurs nulles qui sont  des NA
+
+```
+
+Donnée Consommation électrique 
+```{r}
+vis_dat(eCO2mix_RTE_energie_M)
+
+df <- eCO2mix_RTE_energie_M[,1:15] # on exclut les données NA == commerce internationale 
+
+vis_miss(df) # 34.86 % de donnée manquante pour le Nucléaire == principale source d'électricité
+
+df <- df[,c(1,2,3,14)] %>% filter(Territoire=="France") 
+
+df <- mutate(df, mois= ym(Mois) )
+
+df2 <- merge(M1,df) %>% select(mois,value,Consommation.totale)
+head(df2)
+
+```

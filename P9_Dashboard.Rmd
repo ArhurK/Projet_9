@@ -1,0 +1,86 @@
+---
+title: "Dashboard Projet 9 : Résumé des missions"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dygraphs)
+library(xts)
+library(DT)
+library(tidyverse)
+library(highcharter)
+```
+
+# Page 1 
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+###  A.  Correction des effets de température 
+
+```{r}
+
+
+dygraph(v, main= "Consommation Électrique en France") %>%
+  dySeries("ts2", label = "Consommation Totale", color = "peru") %>%
+  dySeries("ts", label = "Consommation Corrigée (hors chauffage électrique)", color= "steelblue") %>%
+  dyOptions(stackedGraph = F) %>%
+  dyRangeSelector(height = 20)
+
+
+```
+
+###  C. Décomposition saisonnière
+
+```{r warning=FALSE}
+highcharter:: hchart(stl(ts, s.window="period"))
+```
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+###  B. Moyenne mobile 
+
+```{r}
+dygraph(v2, main= "Consommation Électrique en France",ylab = "Consommation Corrigée (GWh)") %>%
+  dySeries("MA_ts", label = "Moyenne Mobile", color = "red") %>%
+  dySeries("ts", label = "Consommation(hors chauffage électrique)", color= "steelblue") %>%
+  dyOptions(stackedGraph = F) %>%
+  dyRangeSelector(height = 20)
+
+```
+
+###  D. Prédiction de la consommation corrigée sur 12 mois modèle Holt-Winters
+
+```{r warning=FALSE}
+hchart(hw.pred)
+```
+
+# Donnée 
+
+```{r}
+
+
+df2 %>%
+  rename(effet_météo=value) %>%
+  rename(Consommation_totale=Consommation.totale) %>%
+  datatable(
+  extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = 
+      list('copy', 'print', list(
+        extend = 'collection',
+        buttons = c('csv', 'excel', 'pdf'),
+        text = 'Download'
+      ))
+    
+  )
+)
+```
+

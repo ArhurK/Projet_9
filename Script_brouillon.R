@@ -1,0 +1,81 @@
+## Test Librarie Fable ----------
+
+
+# Fable.prophet
+library(fable)
+library(fable.prophet)
+library(tsibble) # Manipulation, transformation 
+library(feasts)
+
+df3 <- df2 %>%
+  mutate(mois = yearmonth(mois)) %>%
+  as_tsibble(index = mois) 
+
+
+df3 %>% select(mois,Consommation_corrigée) %>% gg_season()
+
+
+df3 %>% gg_subseries(Consommation_corrigée)
+
+df3 %>% ACF(Consommation_corrigée) %>% autoplot()
+
+
+# Trend 
+
+dcmp <- df3%>%
+  model(stl = STL(Consommation_corrigée))
+components(dcmp)
+
+
+components(dcmp) %>%
+  as_tsibble() %>%
+  autoplot(Consommation_corrigée, colour="gray") +
+  geom_line(aes(y=trend), colour = "#D55E00") +
+  labs(
+    title = "Trend fable "
+  )
+
+# decompose 
+
+components(dcmp) %>% autoplot()
+
+# season adjusted 
+
+
+components(dcmp) %>%
+  as_tsibble() %>%
+  autoplot(Consommation_corrigée, colour = "gray") +
+  geom_line(aes(y=season_adjust), colour = "#0072B2") +
+  labs(y = "Conso corrigée",
+       title = "Season adjust")
+
+# forecasting
+
+
+train.fable <- df3[1:80,]
+
+fit.fable <- train.fable %>%
+  model(
+    arima = ARIMA(Consommation_corrigée),
+    ets = ETS(Consommation_corrigée),
+    prophet = prophet(Consommation_corrigée ~ season(period = 4, order = 2,
+                                      type = "multiplicative"))
+  )
+
+fc.fable <- fit.fable %>% forecast(h = "2 years 9 months") # OK 
+
+
+fc.fable %>% autoplot(df3)
+
+fc.fable %>% accuracy(df3) # Arima, HW , puis Prophet .
+
+
+library(forecast)
+
+airforecast <- forecast(auto.arima(AirPassengers), level = 95)
+
+hchart(airforecast)
+
+hchart(ts_fc)
+
+hchart(fc.fable)
