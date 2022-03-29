@@ -104,7 +104,7 @@ m8 <- m8 %>% unite(mois,year,name,sep = "-")
 
 - On joint les fichiers et on agrège par la moyenne par date.
 
-- On supprimer les valeurs égales à zéro qui sont des valeurs manquantes NA.
+- On supprimer les valeurs égales à zéro qui sont des valeurs manquantes *NA*.
 
 - On applique le format Date à la colonne "mois".
 
@@ -533,8 +533,8 @@ On peut rejeter les hypothèses suivantes :
 - La serie est un bruit blanc                   Ljung-Box test      p-value < 0.05
 - les résidus suivent une loi Normale           Shapiro-Wilk test   p-value  < 0.05
 
-
-
+/
+/
 
 
 
@@ -550,9 +550,9 @@ On peut rejeter les hypothèses suivantes :
 
 
 
-Recherche d'un modèle avec la fonction auto.arima du package forecast
+Recherche d'un modèle avec la fonction auto.arima du package forecast.
 
-On test auto aurima sur l'ensemble du jeu de donnée 
+On teste auto aurima sur l'ensemble du jeu de donnée. 
 
 ```{r}
 # auto.arima(ts, seasonal = T,trace = T,test = "kpss", ic="bic")
@@ -565,13 +565,13 @@ d.forecast <- forecast(d.arima, level = c(95), h = 12)
 ```
 
 ```{r}
-autoplot(ts, series=" Consommation corrigée",size=0.8) +
-  autolayer(d.forecast, series=" Prévision ARIMA",size=0.8) +
-  ggtitle(" Prévision de consommation électrique modèle ARIMA") +
-  theme(plot.title = element_text(size=10)) +
-  labs(x="",y="Consommation corrigée (GWh)") +
-  theme(legend.position="top",plot.title = element_text(size=10)) +
-  scale_color_manual(values=c('steelblue','magenta'))
+# autoplot(ts, series=" Consommation corrigée",size=0.8) +
+#   autolayer(d.forecast, series=" Prévision ARIMA",size=0.8) +
+#   ggtitle(" Prévision de consommation électrique modèle ARIMA") +
+#   theme(plot.title = element_text(size=10)) +
+#   labs(x="",y="Consommation corrigée (GWh)") +
+#   theme(legend.position="top",plot.title = element_text(size=10)) +
+#   scale_color_manual(values=c('steelblue','magenta'))
 ```
 #### Modélisation Train and Test 
 
@@ -637,8 +637,8 @@ shapiro.test(residuals(new.f.arima))
 ```
 
 On peut rejeter les hypothèses : 
-- de bruit blanc de la série :           Ljung-Box test :p value < 0.05
-- et de normalité des résidus :          Shapiro-Wilk normality test : p value < 0.05
+-  de bruit blanc de la série :           Ljung-Box test :p value < 0.05
+-  et de normalité des résidus :          Shapiro-Wilk normality test : p value < 0.05
 
 
 
@@ -694,9 +694,9 @@ Conclusion Partie 3 :
 
 
 
-# Bonus : pour aller plus loin 
+# Pour aller plus loin 
 
-1. librarie Prophet pour un nouveau modèle prédictif.
+1. Librarie Prophet pour un nouveau modèle prédictif.
 2. Fable pour la comparaison des modèles.
 3. Highcharter pour la data Viz.
 
